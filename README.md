@@ -13,7 +13,8 @@ Follow the Android and iOS configuration steps of the official [video_player](ht
 * `maxFileSize` and `maxCacheSize` are hardcoded at 100MiB and 1GiB respectively in Android.
 
 ### Contributors
-
+* [Santiago Rodriguez](https://github.com/SantiagoPineapple)
+* [Felipe Osano](https://github.com/felipeosano)
 * [Vikram Pratap Singh](https://github.com/vikram25897)
 * [EnderTan](https://github.com/EnderTan)
 * [Philipp Bauer](https://github.com/ciriousjoker)
