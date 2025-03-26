@@ -1,7 +1,3 @@
-// Copyright 2013 The Flutter Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
 package com.lazyarts.vikram.cached_video_player;
 
 import android.content.Context;
@@ -26,70 +22,39 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Map;
 import javax.net.ssl.HttpsURLConnection;
 
-/** Android platform implementation of the VideoPlayerPlugin. */
 public class CachedVideoPlayerPlugin implements FlutterPlugin, VideoPlayerApi {
   private static final String TAG = "VideoPlayerPlugin";
   private final LongSparseArray<CachedVideoPlayer> videoPlayers = new LongSparseArray<>();
   private FlutterState flutterState;
   private VideoPlayerOptions options = new VideoPlayerOptions();
 
-  /** Register this with the v2 embedding for the plugin to respond to lifecycle callbacks. */
   public CachedVideoPlayerPlugin() {}
-
-  @SuppressWarnings("deprecation")
-  private CachedVideoPlayerPlugin(io.flutter.plugin.common.PluginRegistry.Registrar registrar) {
-    this.flutterState =
-        new FlutterState(
-            registrar.context(),
-            registrar.messenger(),
-            registrar::lookupKeyForAsset,
-            registrar::lookupKeyForAsset,
-            registrar.textures());
-    flutterState.startListening(this, registrar.messenger());
-  }
-
-  /** Registers this with the stable v1 embedding. Will not respond to lifecycle events. */
-  @SuppressWarnings("deprecation")
-  public static void registerWith(io.flutter.plugin.common.PluginRegistry.Registrar registrar) {
-    final CachedVideoPlayerPlugin plugin = new CachedVideoPlayerPlugin(registrar);
-    registrar.addViewDestroyListener(
-        view -> {
-          plugin.onDestroy();
-          return false; // We are not interested in assuming ownership of the NativeView.
-        });
-  }
 
   @Override
   public void onAttachedToEngine(FlutterPluginBinding binding) {
-
-    if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
       try {
         HttpsURLConnection.setDefaultSSLSocketFactory(new CustomSSLSocketFactory());
       } catch (KeyManagementException | NoSuchAlgorithmException e) {
-        Log.w(
-            TAG,
-            "Failed to enable TLSv1.1 and TLSv1.2 Protocols for API level 19 and below.\n"
-                + "For more information about Socket Security, please consult the following link:\n"
-                + "https://developer.android.com/reference/javax/net/ssl/SSLSocket",
-            e);
+        Log.w(TAG, "Failed to enable TLS protocols for legacy devices.", e);
       }
     }
 
     final FlutterInjector injector = FlutterInjector.instance();
-    this.flutterState =
-        new FlutterState(
-            binding.getApplicationContext(),
-            binding.getBinaryMessenger(),
-            injector.flutterLoader()::getLookupKeyForAsset,
-            injector.flutterLoader()::getLookupKeyForAsset,
-            binding.getTextureRegistry());
+    this.flutterState = new FlutterState(
+        binding.getApplicationContext(),
+        binding.getBinaryMessenger(),
+        injector.flutterLoader()::getLookupKeyForAsset,
+        injector.flutterLoader()::getLookupKeyForAsset,
+        binding.getTextureRegistry()
+    );
     flutterState.startListening(this, binding.getBinaryMessenger());
   }
 
   @Override
   public void onDetachedFromEngine(FlutterPluginBinding binding) {
     if (flutterState == null) {
-      Log.wtf(TAG, "Detached from the engine before registering to it.");
+      Log.wtf(TAG, "Detached before attaching.");
     }
     flutterState.stopListening(binding.getBinaryMessenger());
     flutterState = null;
@@ -104,11 +69,6 @@ public class CachedVideoPlayerPlugin implements FlutterPlugin, VideoPlayerApi {
   }
 
   private void onDestroy() {
-    // The whole FlutterView is being destroyed. Here we release resources acquired for all
-    // instances
-    // of VideoPlayer. Once https://github.com/flutter/flutter/issues/19358 is resolved this may
-    // be replaced with just asserting that videoPlayers.isEmpty().
-    // https://github.com/flutter/flutter/issues/20989 tracks this.
     disposeAllPlayers();
   }
 
@@ -117,45 +77,40 @@ public class CachedVideoPlayerPlugin implements FlutterPlugin, VideoPlayerApi {
   }
 
   public TextureMessage create(CreateMessage arg) {
-    TextureRegistry.SurfaceTextureEntry handle =
-        flutterState.textureRegistry.createSurfaceTexture();
-    EventChannel eventChannel =
-        new EventChannel(
-            flutterState.binaryMessenger, "flutter.io/videoPlayer/videoEvents" + handle.id());
+    TextureRegistry.SurfaceTextureEntry handle = flutterState.textureRegistry.createSurfaceTexture();
+    EventChannel eventChannel = new EventChannel(
+        flutterState.binaryMessenger, "flutter.io/videoPlayer/videoEvents" + handle.id());
 
     CachedVideoPlayer player;
     if (arg.getAsset() != null) {
-      String assetLookupKey;
-      if (arg.getPackageName() != null) {
-        assetLookupKey =
-            flutterState.keyForAssetAndPackageName.get(arg.getAsset(), arg.getPackageName());
-      } else {
-        assetLookupKey = flutterState.keyForAsset.get(arg.getAsset());
-      }
-      player =
-          new CachedVideoPlayer(
-              flutterState.applicationContext,
-              eventChannel,
-              handle,
-              "asset:///" + assetLookupKey,
-              null,
-              null,
-              options);
+      String assetLookupKey = arg.getPackageName() != null
+          ? flutterState.keyForAssetAndPackageName.get(arg.getAsset(), arg.getPackageName())
+          : flutterState.keyForAsset.get(arg.getAsset());
+
+      player = new CachedVideoPlayer(
+          flutterState.applicationContext,
+          eventChannel,
+          handle,
+          "asset:///" + assetLookupKey,
+          null,
+          null,
+          options
+      );
     } else {
       @SuppressWarnings("unchecked")
       Map<String, String> httpHeaders = arg.getHttpHeaders();
-      player =
-          new CachedVideoPlayer(
-              flutterState.applicationContext,
-              eventChannel,
-              handle,
-              arg.getUri(),
-              arg.getFormatHint(),
-              httpHeaders,
-              options);
+      player = new CachedVideoPlayer(
+          flutterState.applicationContext,
+          eventChannel,
+          handle,
+          arg.getUri(),
+          arg.getFormatHint(),
+          httpHeaders,
+          options
+      );
     }
-    videoPlayers.put(handle.id(), player);
 
+    videoPlayers.put(handle.id(), player);
     TextureMessage result = new TextureMessage();
     result.setTextureId(handle.id());
     return result;
@@ -168,23 +123,19 @@ public class CachedVideoPlayerPlugin implements FlutterPlugin, VideoPlayerApi {
   }
 
   public void setLooping(LoopingMessage arg) {
-    CachedVideoPlayer player = videoPlayers.get(arg.getTextureId());
-    player.setLooping(arg.getIsLooping());
+    videoPlayers.get(arg.getTextureId()).setLooping(arg.getIsLooping());
   }
 
   public void setVolume(VolumeMessage arg) {
-    CachedVideoPlayer player = videoPlayers.get(arg.getTextureId());
-    player.setVolume(arg.getVolume());
+    videoPlayers.get(arg.getTextureId()).setVolume(arg.getVolume());
   }
 
   public void setPlaybackSpeed(PlaybackSpeedMessage arg) {
-    CachedVideoPlayer player = videoPlayers.get(arg.getTextureId());
-    player.setPlaybackSpeed(arg.getSpeed());
+    videoPlayers.get(arg.getTextureId()).setPlaybackSpeed(arg.getSpeed());
   }
 
   public void play(TextureMessage arg) {
-    CachedVideoPlayer player = videoPlayers.get(arg.getTextureId());
-    player.play();
+    videoPlayers.get(arg.getTextureId()).play();
   }
 
   public PositionMessage position(TextureMessage arg) {
@@ -196,13 +147,11 @@ public class CachedVideoPlayerPlugin implements FlutterPlugin, VideoPlayerApi {
   }
 
   public void seekTo(PositionMessage arg) {
-    CachedVideoPlayer player = videoPlayers.get(arg.getTextureId());
-    player.seekTo(arg.getPosition().intValue());
+    videoPlayers.get(arg.getTextureId()).seekTo(arg.getPosition().intValue());
   }
 
   public void pause(TextureMessage arg) {
-    CachedVideoPlayer player = videoPlayers.get(arg.getTextureId());
-    player.pause();
+    videoPlayers.get(arg.getTextureId()).pause();
   }
 
   @Override
@@ -230,7 +179,8 @@ public class CachedVideoPlayerPlugin implements FlutterPlugin, VideoPlayerApi {
         BinaryMessenger messenger,
         KeyForAssetFn keyForAsset,
         KeyForAssetAndPackageName keyForAssetAndPackageName,
-        TextureRegistry textureRegistry) {
+        TextureRegistry textureRegistry
+    ) {
       this.applicationContext = applicationContext;
       this.binaryMessenger = messenger;
       this.keyForAsset = keyForAsset;
@@ -238,8 +188,8 @@ public class CachedVideoPlayerPlugin implements FlutterPlugin, VideoPlayerApi {
       this.textureRegistry = textureRegistry;
     }
 
-    void startListening(CachedVideoPlayerPlugin methodCallHandler, BinaryMessenger messenger) {
-      VideoPlayerApi.setup(messenger, methodCallHandler);
+    void startListening(CachedVideoPlayerPlugin handler, BinaryMessenger messenger) {
+      VideoPlayerApi.setup(messenger, handler);
     }
 
     void stopListening(BinaryMessenger messenger) {
